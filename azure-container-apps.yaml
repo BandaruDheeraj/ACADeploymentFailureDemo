@@ -1,0 +1,54 @@
+apiVersion: 2023-05-01
+location: eastus
+name: failing-aca-demo
+properties:
+  managedEnvironmentId: /subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.App/managedEnvironments/{environment-name}
+  configuration:
+    # ISSUE: Port configured for 8080, but app runs on 3000
+    ingress:
+      external: true
+      targetPort: 8080  # ISSUE: App actually runs on 3000
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+    # ISSUE: Health check configured for wrong port
+    probes:
+      - type: readiness
+        httpGet:
+          path: /health
+          port: 8080  # ISSUE: App health endpoint is on 3000
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      - type: liveness
+        httpGet:
+          path: /health
+          port: 8080  # ISSUE: App health endpoint is on 3000
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+  template:
+    containers:
+      - name: failing-app
+        image: failing-aca-app:latest
+        # ISSUE: Missing REQUIRED_CONFIG environment variable
+        # This will cause the app to crash on startup
+        env:
+          - name: NODE_ENV
+            value: production
+          # ISSUE: REQUIRED_CONFIG is not set here
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+    # ISSUE: No security context specified - container will run as root
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
+      rules:
+        - name: http-rule
+          http:
+            metadata:
+              concurrentRequests: 10 
